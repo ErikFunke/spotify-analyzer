@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mein Musikprofil · Spotify</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;750;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="wrap">
+
+    <!-- Header -->
+    <div class="topbar">
+      {% set img = profile.user.image %}
+      {% if img %}
+        <img class="avatar" src="{{ img }}" alt="">
+      {% else %}
+        <div class="avatar placeholder">{{ (profile.user.display_name or '?')[0]|upper }}</div>
+      {% endif %}
+      <div class="who">
+        <h1>{{ profile.user.display_name or 'Mein Musikprofil' }}</h1>
+        <div class="sub">
+          {% if profile.user.country %}{{ profile.user.country }} · {% endif %}
+          Stand {{ profile.generated_at }}
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <a class="btn ghost" href="/api/data" target="_blank">JSON</a>
+      <a class="btn ghost" href="/logout">Abmelden</a>
+      <button class="btn ghost" id="llmBtn">🧠 LLM-Analyse</button>
+      <button class="btn" id="refreshBtn">⟳ Aktualisieren</button>
+    </div>
+
+    <!-- Stat strip -->
+    <div class="stat-strip" id="statStrip"></div>
+
+    <!-- PERSÖNLICHKEIT -->
+    <div class="section-title">Persönlichkeit (Tendenzen)</div>
+    <div class="grid">
+      <div class="card col-7">
+        <h2>🧠 Big-Five-Tendenzen</h2>
+        <div class="hint" id="bfConf"></div>
+        <div id="bigfive"></div>
+      </div>
+      <div class="card col-5">
+        <h2>🎚️ AVD-Profil</h2>
+        <div class="hint">Arousal · Valence · Depth – die Achsen, aus denen die Big Five abgeleitet werden (Greenberg 2016)</div>
+        <div id="avdBars"></div>
+        <div class="chart-box" style="height:220px; margin-top:6px"><canvas id="avdRadar"></canvas></div>
+      </div>
+      <div class="col-12">
+        <div class="disclaimer" id="disclaimer"></div>
+      </div>
+    </div>
+
+    <!-- LEBENSPHASE & TRENDS -->
+    <div class="section-title">Lebensphase &amp; Entwicklung</div>
+    <div class="grid">
+      <div class="card col-5">
+        <h2>🎂 Lebensphase &amp; Alter</h2>
+        <div class="hint">Reminiscence Bump (~prägende Jahre mit 14–24) – grobe Schätzung</div>
+        <div id="lifePhase"></div>
+      </div>
+      <div class="card col-7">
+        <h2>📈 Trends im Hörverhalten</h2>
+        <div class="hint" id="trendHint">Was du wann gespeichert hast – Mainstream-Drift & Nostalgie vs. Neugier</div>
+        <div id="trendLabels" class="pill-list" style="margin-bottom:12px"></div>
+        <div class="chart-box"><canvas id="trendLine"></canvas></div>
+      </div>
+    </div>
+
+    <!-- GESCHMACK -->
+    <div class="section-title">Geschmack</div>
+    <div class="grid">
+      <div class="card col-7">
+        <h2>🏷️ Top-Genres</h2>
+        <div class="hint">Gewichtet über alle Zeiträume (Rang + Zeitfenster)</div>
+        <div class="chart-box" style="height:340px"><canvas id="genreBar"></canvas></div>
+      </div>
+      <div class="card col-5">
+        <h2>🎭 Vielfalt &amp; Eigenheiten</h2>
+        <div class="hint">Genre-Breite, Explicit-Anteil, Track-Länge, Konzentration</div>
+        <div class="chart-box" style="height:170px"><canvas id="explicitDoughnut"></canvas></div>
+        <div class="pill-list" id="quirkPills" style="margin-top:14px"></div>
+      </div>
+      <div class="card col-6">
+        <h2>📅 Ära-Präferenz (Top-Tracks)</h2>
+        <div class="hint">Erscheinungs-Jahrzehnte deiner Lieblingssongs</div>
+        <div class="chart-box"><canvas id="decadeBar"></canvas></div>
+      </div>
+      <div class="card col-6">
+        <h2>🗓️ Ära der gesamten Bibliothek</h2>
+        <div class="hint" id="eraHint">5-Jahres-Schritte über alle gespeicherten Titel</div>
+        <div class="chart-box"><canvas id="eraBar"></canvas></div>
+      </div>
+    </div>
+
+    <!-- VERHALTEN -->
+    <div class="section-title">Verhalten & Zeit</div>
+    <div class="grid">
+      <div class="card col-12">
+        <h2>🔁 Replay-Verhalten &amp; aktuelle Rotation</h2>
+        <div class="hint">Aus den letzten 50 Wiedergaben – dasselbe Fenster wie Spotifys „On Repeat". Hier tauchen aktuelle Dauerschleifen auf, die in den API-„all-time"-Top-Tracks fehlen.</div>
+        <div id="replayBox"></div>
+      </div>
+      <div class="card col-8">
+        <h2>📚 Bibliothek im Zeitverlauf</h2>
+        <div class="hint">Wann du Titel gespeichert hast – deine Geschmacks-Entwicklung</div>
+        <div class="chart-box"><canvas id="timelineLine"></canvas></div>
+      </div>
+      <div class="card col-4">
+        <h2>🕒 Hörzeiten</h2>
+        <div class="hint">Letzte 50 Wiedergaben – grobe Tendenz</div>
+        <div class="chart-box"><canvas id="daytimeDoughnut"></canvas></div>
+      </div>
+      <div class="card col-6">
+        <h2>📆 Hör-Wochentage</h2>
+        <div class="hint">Letzte 50 Wiedergaben</div>
+        <div class="chart-box"><canvas id="weekdayRadar"></canvas></div>
+      </div>
+      <div class="card col-6">
+        <h2>🎯 Geschmacks-Stabilität & Vielfalt</h2>
+        <div class="hint">Wie konstant vs. explorativ – und wie breit gestreut</div>
+        <div id="stabilityBox"></div>
+      </div>
+    </div>
+
+    <!-- TOP LISTEN -->
+    <div class="section-title">Top-Listen</div>
+    <div class="grid">
+      <div class="card col-6">
+        <h2>👤 Top-Artists</h2>
+        <div class="tabs" id="artistTabs"></div>
+        <div class="pill-list" id="artistList"></div>
+      </div>
+      <div class="card col-6">
+        <h2>🎵 Top-Tracks (All-Time)</h2>
+        <div class="hint">API-„all-time" – trägeres Verfahren als Spotifys „On Repeat"/Wrapped. Aktuelle Favoriten siehe Replay oben.</div>
+        <div class="track-list" id="trackList"></div>
+      </div>
+    </div>
+
+    <div class="foot">
+      Lokal erzeugt aus der Spotify Web API · Klangmerkmale (audio-features) seit 2024 nicht mehr verfügbar ·
+      <a href="/api/data" target="_blank">Rohdaten</a>
+    </div>
+  </div>
+
+  <!-- LLM prompt modal -->
+  <div class="overlay" id="llmOverlay">
+    <div class="box" style="width:min(820px,94vw)">
+      <h3>🧠 LLM-Analyse-Prompt</h3>
+      <p class="hint" style="margin-bottom:12px">Kopiere diesen Text in ein LLM (z. B. Claude/ChatGPT). Er enthält deine wichtigsten Kennzahlen + die empirischen Bezugswerte + den Analyse-Auftrag.</p>
+      <pre class="logbox" id="llmText" style="height:340px"></pre>
+      <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap">
+        <button class="btn" id="llmCopy">📋 Kopieren</button>
+        <a class="btn ghost" id="llmDownload" href="/api/llm-prompt?download=1">⬇ Download .md</a>
+        <button class="btn ghost" id="llmClose" style="margin-left:auto">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Refresh overlay -->
+  <div class="overlay" id="overlay">
+    <div class="box">
+      <h3><span class="spinner"></span> Daten werden aktualisiert …</h3>
+      <div class="logbox" id="overlayLog"></div>
+    </div>
+  </div>
+
+  <script id="profile-data" type="application/json">{{ profile|tojson }}</script>
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>

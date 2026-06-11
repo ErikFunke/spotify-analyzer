@@ -1,0 +1,10 @@
+.env
+.spotify_cache
+.genre_cache.json
+raw.json
+.venv/
+__pycache__/
+*.pyc
+spotify_export.json
+music_profile_for_llm.md
+papers/

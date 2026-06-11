@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verbinden · Spotify Musikprofil</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="center-screen">
+    <div class="panel">
+      <div class="logo">🟢</div>
+      {% if need_fetch %}
+        <h1>Verbunden – noch keine Daten</h1>
+        <p>Dein Spotify-Konto ist verknüpft. Lade jetzt deine Hör-Daten, um das Dashboard zu füllen.</p>
+        <button class="btn big-btn" id="fetchBtn">Daten jetzt laden</button>
+        <div class="logbox" id="log" style="display:none; margin-top:18px; text-align:left"></div>
+        <script>
+          const btn = document.getElementById('fetchBtn');
+          const log = document.getElementById('log');
+          btn.onclick = async () => {
+            btn.disabled = true; btn.textContent = 'Lade …';
+            log.style.display = 'block';
+            await fetch('/api/refresh', {method:'POST'});
+            const poll = setInterval(async () => {
+              const s = await (await fetch('/api/refresh/status')).json();
+              log.textContent = (s.log || []).join('\n');
+              log.scrollTop = log.scrollHeight;
+              if (!s.running) {
+                clearInterval(poll);
+                if (s.error) { btn.disabled=false; btn.textContent='Erneut versuchen'; }
+                else location.href = '/';
+              }
+            }, 800);
+          };
+        </script>
+      {% else %}
+        <h1>Mit Spotify verbinden</h1>
+        <p>Nur Lesezugriff auf Top-Listen, zuletzt Gehörtes und deine Bibliothek. Kein Schreibzugriff.</p>
+        <a class="btn big-btn" href="{{ auth_url }}">Mit Spotify anmelden</a>
+        <p style="margin-top:16px; font-size:12.5px; color:var(--muted-2)">
+          Daten werden nur lokal verarbeitet und auf deinem Rechner gespeichert.
+        </p>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

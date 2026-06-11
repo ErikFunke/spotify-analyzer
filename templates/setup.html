@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Einrichtung · Spotify Musikprofil</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="center-screen">
+    <div class="panel">
+      <div class="logo">🎧</div>
+      <h1>Fast geschafft – Zugangsdaten fehlen</h1>
+      <p>Lege eine <code>.env</code>-Datei neben das Skript (Vorlage: <code>.env.example</code>) und trage deine Spotify-App-Daten ein.</p>
+      <ol class="steps">
+        <li>Öffne das <a href="https://developer.spotify.com/dashboard" target="_blank" style="color:var(--green-soft)">Spotify Developer Dashboard</a> → <b>Create app</b>.</li>
+        <li>Trage als Redirect URI exakt ein: <code>{{ redirect_uri }}</code></li>
+        <li>Kopiere <b>Client ID</b> + <b>Client Secret</b> in die <code>.env</code>:</li>
+      </ol>
+      <div class="logbox" style="height:auto; text-align:left">SPOTIPY_CLIENT_ID=deine_client_id
+SPOTIPY_CLIENT_SECRET=dein_client_secret
+SPOTIPY_REDIRECT_URI={{ redirect_uri }}</div>
+      <p style="margin-top:16px">Danach Seite neu laden.</p>
+      <a class="btn big-btn" href="/" onclick="location.reload()">Neu laden</a>
+    </div>
+  </div>
+</body>
+</html>
