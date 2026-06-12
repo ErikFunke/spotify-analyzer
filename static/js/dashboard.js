@@ -457,8 +457,17 @@ simpleBar('decadeBar', P.release_decades, CYAN, GREEN, d => d + 's');
   btn.onclick = async () => {
     btn.disabled = true;
     overlay.classList.add('show');
-    const r = await (await fetch('/api/refresh', { method: 'POST' })).json();
-    if (r.error) { log.textContent = 'Fehler: ' + r.error; return; }
+    const r = await (await fetch('/api/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: DATA.source || 'api' }),
+    })).json();
+    if (r.error) {
+      log.textContent = 'Fehler: ' + r.error +
+        (r.error === 'no_history_dir' ? ' (History-Ordner über „Quelle“ wählen)' : '');
+      btn.disabled = false;
+      return;
+    }
     const poll = setInterval(async () => {
       const s = await (await fetch('/api/refresh/status')).json();
       log.textContent = (s.log || []).join('\n');

@@ -73,10 +73,38 @@ cp .env.example .env      # fill in Client ID / Secret
 | `python spotify.py` | Collect data only → `spotify_export.json` + `music_profile_for_llm.md` |
 | `python spotify.py --web --port 9000` | Use another port (update the Redirect URI in your Spotify app!) |
 | `python spotify.py --web --no-browser` | Don't open the browser automatically |
+| `python spotify.py --history <DIR>` | Build the profile from the **Extended Streaming History** download instead of the Web API |
+| `python spotify.py --combined <DIR>` | **Combine both** — API favorites/top + full streaming history (best data basis) |
 | `python spotify.py --reprocess file.json` | Re-analyze an existing export + fetch genres (no new Spotify call) |
 
-In the dashboard, the **⟳ button** refreshes the data live, and the
-**🧠 LLM Analysis** button opens the ready-made prompt (copy / download).
+### Three data sources
+
+When you open the dashboard with no profile yet (or click **⇄ Quelle**), you pick
+a source:
+
+* **🔗 Web API (live)** — top lists, recently played, library. Fast, but limited:
+  only the last 50 plays for listening times.
+* **📂 Extended Streaming History (download)** — your *real* plays across **all
+  years**. Request it under *Spotify → Account → Privacy → Extended streaming
+  history*; unzip it and point the app at the folder containing
+  `Streaming_History_Audio_*.json`. Adds true listening times, skip rate, hours
+  listened, per-year volume and a discovery timeline. On its own the download has
+  no release years / popularity, so age estimate and mainstream drift are off.
+* **🔀 Combined (recommended)** — both at once. The two carry *different*
+  meaning and are kept **strictly separate**, including in the LLM analysis:
+  * **API = declared favorites / taste** (top lists + saved library, *with*
+    release years → personality, age estimate and mainstream stay available).
+  * **History = everything ever played** (behaviour/volume incl. background &
+    skips → listening times, hours, skip rate, most-played).
+  The LLM prompt is told to treat favorites ≠ total plays and to comment on the
+  *gap* (e.g. what plays a lot but isn't a favorite).
+
+Genres are enriched externally in every mode. Pre-fill the history folder via
+`SPOTIFY_HISTORY_DIR` in `.env`.
+
+In the dashboard, the **⟳ button** refreshes the data live (using the current
+profile's source), and the **🧠 LLM Analysis** button opens the ready-made
+prompt (copy / download).
 
 > **Note:** the first real data fetch enriches genres via MusicBrainz at
 > ~1 request/second (a few minutes for ~100 artists); results are cached, so
@@ -120,11 +148,12 @@ Personality Science, 7(6), 597–605.
 ## Project layout
 
 ```
-spotify.py        Data fetching + CLI + entry point (--web, --reprocess)
+spotify.py        Data fetching + CLI + entry point (--web, --history, --reprocess)
+history.py        Build the profile from the Extended Streaming History download
 analysis.py       Statistics + AVD model + Big Five + life phase + trends + replay
 genres.py         Genre enrichment (MusicBrainz / Last.fm) with caching
 app.py            Flask web dashboard + OAuth (/callback) + LLM-prompt endpoint
-templates/        dashboard.html, connect.html, setup.html
+templates/        dashboard.html, start.html, connect.html, setup.html
 static/           css/style.css, js/dashboard.js
 requirements.txt  Dependencies
 run.bat/.ps1/.sh  Launchers

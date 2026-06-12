@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Datenquelle wählen · Spotify Musikprofil</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    .choice-wrap { width: min(940px, 94vw); margin: 0 auto; }
+    .choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    @media (max-width: 760px) { .choice-grid { grid-template-columns: 1fr; } }
+    .choice { background: var(--card, #14161b); border: 1px solid rgba(255,255,255,.07);
+              border-radius: 16px; padding: 22px; text-align: left; }
+    .choice h2 { margin: 4px 0 6px; font-size: 19px; }
+    .choice p { color: var(--muted, #9aa0aa); font-size: 13.5px; line-height: 1.5; }
+    .choice .tag { font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+                   color: var(--green-soft, #1ed760); font-weight: 700; }
+    .choice input[type=text] { width: 100%; box-sizing: border-box; margin-top: 8px;
+        padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.12);
+        background: #0c0e12; color: #e8e8ea; font-size: 13px; font-family: inherit; }
+    .choice .btn { margin-top: 14px; }
+    .choice.disabled { opacity: .55; }
+    .logbox { margin-top: 18px; text-align: left; }
+    .head { text-align: center; margin-bottom: 22px; }
+  </style>
+</head>
+<body>
+  <div class="center-screen" style="align-items:flex-start; padding-top:6vh">
+    <div class="choice-wrap">
+      <div class="head">
+        <div class="logo">🟢</div>
+        <h1>Womit soll dein Profil gebaut werden?</h1>
+        <p style="color:var(--muted-2,#777)">Beide Wege laufen rein lokal. Daten bleiben auf deinem Rechner.</p>
+        {% if has_profile %}<p><a href="/" style="color:var(--green-soft,#1ed760)">← Zurück zum bestehenden Dashboard</a></p>{% endif %}
+      </div>
+
+      <!-- ============ FEATURED: COMBINED ============ -->
+      <div class="choice" style="margin-bottom:18px; border-color:rgba(30,215,96,.45); box-shadow:0 0 0 1px rgba(30,215,96,.15)">
+        <div class="tag">★ Empfohlen · beide Quellen</div>
+        <h2>🔀 Kombiniert: Favoriten + komplette Hörhistorie</h2>
+        <p>API liefert deine <b>erklärten Favoriten/Top</b> (mit Erscheinungsjahr →
+           Alters-Schätzung &amp; Mainstream) — die History liefert <b>alles je
+           Gehörte</b> (Hörvolumen, Hörzeiten, Skip-Rate, Meistgehörtes). Die
+           LLM-Analyse trennt beide Ebenen sauber. Braucht Spotify-Login <i>und</i>
+           den History-Ordner.</p>
+        <label style="font-size:12px; color:var(--muted,#9aa0aa)">History-Ordner:</label>
+        <input type="text" id="histDirCombined" value="{{ default_history_dir or '' }}"
+               placeholder="/Pfad/zu/Spotify Extended Streaming History">
+        {% if not has_token %}
+          <p style="color:var(--muted-2,#777); font-size:12.5px">Erst unten mit Spotify anmelden, dann hier kombinieren.</p>
+          <button class="btn big-btn" data-source="combined" data-dir="histDirCombined" disabled>Erst Spotify-Login nötig</button>
+        {% else %}
+          <button class="btn big-btn" data-source="combined" data-dir="histDirCombined">Kombiniert bauen</button>
+        {% endif %}
+      </div>
+
+      <div class="choice-grid">
+
+        <!-- ============ A) WEB-API ============ -->
+        <div class="choice {% if not has_creds %}disabled{% endif %}">
+          <div class="tag">Web-API · Live</div>
+          <h2>🔗 Spotify-Konto verbinden</h2>
+          <p>Top-Listen (4 Wochen / 6 Monate / all-time), zuletzt Gehörtes und deine
+             Bibliothek. Schnell, aber begrenzt: keine Erscheinungsjahre für Trends,
+             nur die letzten 50 Wiedergaben für Hörzeiten.</p>
+
+          {% if not has_creds %}
+            <p><b>Zugangsdaten fehlen.</b> Lege eine <code>.env</code> mit
+               <code>SPOTIPY_CLIENT_ID</code> / <code>SPOTIPY_CLIENT_SECRET</code> an.
+               Redirect URI: <code>{{ redirect_uri }}</code> (Spotify Developer Dashboard).</p>
+            <a class="btn" href="/?setup=1" onclick="location.reload()">Neu prüfen</a>
+          {% elif not has_token %}
+            <a class="btn big-btn" href="{{ auth_url }}">Mit Spotify anmelden</a>
+          {% else %}
+            <button class="btn big-btn" data-source="api">Daten von Spotify laden</button>
+          {% endif %}
+        </div>
+
+        <!-- ============ B) EXTENDED STREAMING HISTORY ============ -->
+        <div class="choice">
+          <div class="tag">Download · Granular</div>
+          <h2>📂 Extended Streaming History</h2>
+          <p>Echte Wiedergaben über <b>alle Jahre</b>: präzise Hörzeiten, Skip-Rate,
+             Hörminuten, Entdeckungs-Zeitachse. Anfordern unter
+             <i>Account → Datenschutz → Erweiterte Streaming-History</i>.</p>
+          <label style="font-size:12px; color:var(--muted,#9aa0aa)">Ordner mit
+             <code>Streaming_History_Audio_*.json</code>:</label>
+          <input type="text" id="histDir" value="{{ default_history_dir or '' }}"
+                 placeholder="/Pfad/zu/Spotify Extended Streaming History">
+          <button class="btn big-btn" data-source="history">Aus History bauen</button>
+        </div>
+
+      </div>
+
+      <div class="logbox" id="log" style="display:none"></div>
+    </div>
+  </div>
+
+  <script>
+    const log = document.getElementById('log');
+    function fail(msg) {
+      log.style.display = 'block';
+      log.textContent = msg;
+    }
+    document.querySelectorAll('button[data-source]').forEach(btn => {
+      btn.onclick = async () => {
+        const source = btn.dataset.source;
+        const payload = { source };
+        if (source === 'history' || source === 'combined') {
+          const inputId = btn.dataset.dir || 'histDir';
+          payload.history_dir = document.getElementById(inputId).value.trim();
+        }
+        document.querySelectorAll('button[data-source]').forEach(b => b.disabled = true);
+        btn.textContent = 'Lade …';
+        log.style.display = 'block';
+        log.textContent = '>> Start …';
+        const res = await fetch('/api/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({}));
+          const map = {
+            no_history_dir: 'Kein Ordner angegeben.',
+            history_not_found: 'Keine Streaming_History_Audio_*.json im Ordner gefunden: ' + (e.path || ''),
+            not_authenticated: 'Nicht mit Spotify angemeldet.',
+          };
+          fail('!! ' + (map[e.error] || e.error || ('HTTP ' + res.status)));
+          document.querySelectorAll('button[data-source]').forEach(b => b.disabled = false);
+          btn.textContent = { history: 'Aus History bauen', combined: 'Kombiniert bauen' }[source] || 'Daten von Spotify laden';
+          return;
+        }
+        const poll = setInterval(async () => {
+          const s = await (await fetch('/api/refresh/status')).json();
+          log.textContent = (s.log || []).join('\n');
+          log.scrollTop = log.scrollHeight;
+          if (!s.running) {
+            clearInterval(poll);
+            if (s.error) {
+              document.querySelectorAll('button[data-source]').forEach(b => b.disabled = false);
+              btn.textContent = 'Erneut versuchen';
+            } else {
+              location.href = '/';
+            }
+          }
+        }, 800);
+      };
+    });
+  </script>
+</body>
+</html>

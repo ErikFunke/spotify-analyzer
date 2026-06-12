@@ -54,14 +54,23 @@ def _spotify_client():
 # --------------------------------------------------------------------------- #
 # REFRESH-JOB
 # --------------------------------------------------------------------------- #
-def _run_refresh():
+def _run_refresh(source: str = "api", history_dir: str = ""):
     def log(msg):
         with _lock:
             _job["log"].append(str(msg))
     try:
-        sp = _spotify_client()
-        profile = core.build_profile(sp, log=log)
-        core.save_profile(profile)
+        if source == "history":
+            log(">> Quelle: Extended Streaming History (Download)")
+            core.build_history_profile(history_dir or None, log=log)
+        elif source == "combined":
+            log(">> Quelle: API-Favoriten + Streaming-History (kombiniert)")
+            sp = _spotify_client()
+            profile = core.build_combined_profile(sp, history_dir or None, log=log)
+            core.save_profile(profile)
+        else:
+            sp = _spotify_client()
+            profile = core.build_profile(sp, log=log)
+            core.save_profile(profile)
         with _lock:
             _job["done"] = True
         log(">> Fertig.")
@@ -79,16 +88,22 @@ def _run_refresh():
 # --------------------------------------------------------------------------- #
 @app.route("/")
 def index():
-    if not core.CONFIG["client_id"] or not core.CONFIG["client_secret"]:
-        return render_template("setup.html",
-                               redirect_uri=core.CONFIG["redirect_uri"])
-    if not _has_token():
-        auth_url = _oauth().get_authorize_url()
-        return render_template("connect.html", auth_url=auth_url)
     profile = core.load_profile()
-    if profile is None:
-        return render_template("connect.html", auth_url=None, need_fetch=True)
-    return render_template("dashboard.html", profile=profile)
+    if profile is not None and not request.args.get("setup"):
+        return render_template("dashboard.html", profile=profile)
+
+    has_creds = bool(core.CONFIG["client_id"] and core.CONFIG["client_secret"])
+    has_token = has_creds and _has_token()
+    auth_url = _oauth().get_authorize_url() if (has_creds and not has_token) else None
+    return render_template(
+        "start.html",
+        has_creds=has_creds,
+        has_token=has_token,
+        auth_url=auth_url,
+        redirect_uri=core.CONFIG["redirect_uri"],
+        default_history_dir=core.CONFIG["history_dir"],
+        has_profile=profile is not None,
+    )
 
 
 @app.route("/callback")
@@ -129,14 +144,28 @@ def api_llm_prompt():
 
 @app.route("/api/refresh", methods=["POST"])
 def api_refresh():
-    if not _has_token():
-        return jsonify({"error": "not_authenticated"}), 401
+    body = request.get_json(silent=True) or request.form
+    source = (body.get("source") or "api").strip()
+    history_dir = (body.get("history_dir") or "").strip()
+
+    if source in ("history", "combined"):
+        path = history_dir or core.CONFIG["history_dir"]
+        if not path:
+            return jsonify({"error": "no_history_dir"}), 400
+        import history as hist
+        if not hist.find_history_files(path):
+            return jsonify({"error": "history_not_found", "path": path}), 400
+    if source in ("api", "combined"):
+        if not _has_token():
+            return jsonify({"error": "not_authenticated"}), 401
+
     with _lock:
         if _job["running"]:
             return jsonify({"status": "already_running"})
         _job.update({"running": True, "log": [], "done": False,
                      "error": None, "started": time.time()})
-    threading.Thread(target=_run_refresh, daemon=True).start()
+    threading.Thread(target=_run_refresh, args=(source, history_dir),
+                     daemon=True).start()
     return jsonify({"status": "started"})
 
 

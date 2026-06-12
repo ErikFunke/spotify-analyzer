@@ -87,6 +87,8 @@ CONFIG = {
     "client_id":     os.getenv("SPOTIPY_CLIENT_ID", ""),
     "client_secret": os.getenv("SPOTIPY_CLIENT_SECRET", ""),
     "redirect_uri":  os.getenv("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:8888/callback"),
+    # Standard-Ordner für die "Extended Streaming History" (Download).
+    "history_dir":   os.getenv("SPOTIFY_HISTORY_DIR", ""),
 }
 
 SCOPES = "user-top-read user-read-recently-played user-library-read"
@@ -268,8 +270,14 @@ def build_llm_markdown(profile: dict) -> str:
     def fmt_list(items, n=10):
         return ", ".join(items[:n]) if items else "(keine Daten)"
 
+    source = profile.get("source")
+    src_label = {
+        "extended_history": "Extended Streaming History (Download, alle je gehörten Songs)",
+        "combined": "Kombiniert – Web-API (Favoriten/Top) + Extended Streaming History (alles je gehört)",
+    }.get(source, "Spotify Web-API (Top-Listen / zuletzt gehört)")
+
     md = ["# Musikprofil zur LLM-Analyse\n",
-          f"_Erzeugt am {profile['generated_at']} aus Spotify-Daten._\n",
+          f"_Erzeugt am {profile['generated_at']} · Quelle: {src_label}._\n",
           "## Auftrag an das auswertende Modell\n",
           ("Du bist Musikpsychologe. Analysiere das Profil in DREI Teilen und "
            "stütze dich strikt auf die unten mitgelieferten empirischen "
@@ -303,6 +311,34 @@ def build_llm_markdown(profile: dict) -> str:
            "- Klangmerkmale (Energy/Tempo) fehlen (Spotify-API 2024 "
            "abgeschaltet); AVD ist hier aus Genres geschätzt - beachte das.\n")]
 
+    if source == "combined":
+        md.append("## WICHTIG: zwei Datenebenen sauber trennen\n")
+        md.append(
+            "Dieses Profil mischt ZWEI grundverschiedene Signale - behandle sie "
+            "getrennt und benenne den Unterschied in deiner Analyse:\n\n"
+            "- **Erklärte Favoriten / Geschmack (Web-API):** Top-Artists, Top-Tracks "
+            "und die gespeicherte Bibliothek. Das ist, was die Person AKTIV mag / "
+            "kuratiert. Nutze NUR diese Ebene für Persönlichkeit (Big Five/AVD), "
+            "Genre-Geschmack, Alters-/Lebensphasen-Schätzung und Mainstream-Neigung "
+            "- die psychologische Literatur bezieht sich auf PRÄFERENZ, nicht auf "
+            "Hintergrund-Beschallung.\n"
+            "- **Tatsächliches Hörverhalten (Extended Streaming History):** ALLE je "
+            "abgespielten Songs über Jahre (inkl. nebenbei, Wiederholung, Skips). "
+            "Das ist VERHALTEN/VOLUMEN, nicht zwingend Vorliebe. Nutze es für "
+            "Hörmenge, Hörzeiten, Skip-Verhalten, Treue/Wiederholung, Entwicklung "
+            "über die Jahre und Meistgehörtes.\n\n"
+            "Spannend ist gerade die DIFFERENZ: Was läuft viel, ist aber kein "
+            "erklärter Favorit (Gewohnheit/Funktionsmusik)? Welche Favoriten werden "
+            "kaum noch gespielt? Kommentiere solche Lücken, statt beide Ebenen zu "
+            "vermengen.\n")
+    elif source == "extended_history":
+        md.append("## Hinweis zur Datenquelle\n")
+        md.append(
+            "Quelle ist die Extended Streaming History: ALLE je abgespielten Songs "
+            "(Verhalten/Volumen), KEINE kuratierte Favoritenliste. 'Top'-Listen "
+            "hier = meistgespielt, nicht zwingend Lieblingssongs. Erscheinungsjahr/"
+            "Popularität fehlen -> Alters-Schätzung und Mainstream-Drift entfallen.\n")
+
     md.append("## Empirische Bezugswerte (für deine Herleitung)\n")
     md.append("AVD↔Big-Five-Korrelationen (Greenberg 2016, Tab. A1) - nur die "
               "belastbaren Domänen:\n")
@@ -316,6 +352,41 @@ def build_llm_markdown(profile: dict) -> str:
     md.append("Vielfalt↔Domäne: Offenheit +.13, Verträglichkeit +.10.\n")
 
     md.append("## Daten\n")
+
+    hs = p.get("history_stats")
+    if hs:
+        dr = hs.get("date_range") or [None, None]
+        title = ("### Gesamtes Hörverhalten (Streaming-History – alles je gehört)\n"
+                 if source == "combined"
+                 else "### Streaming-History (gesamter Download)\n")
+        md.append(title)
+        md.append(f"- Zeitraum: **{dr[0]} bis {dr[1]}**")
+        md.append(f"- Hörzeit gesamt: **{hs['total_hours']} h** "
+                  f"(~{hs['total_days_listened']} Tage am Stück)")
+        md.append(f"- Wiedergaben: {hs['total_plays']} gesamt, "
+                  f"{hs['real_plays']} davon ≥30 s gehört, "
+                  f"Skip-Rate {int((hs.get('skip_rate') or 0) * 100)}%")
+        if hs.get("minutes_by_year"):
+            md.append("- Hörminuten pro Jahr: " + ", ".join(
+                f"{y}: {m}" for y, m in hs["minutes_by_year"]))
+        md.append("")
+
+    mp = p.get("most_played")
+    if mp:
+        md.append("### Meistgehörtes (tatsächliche Plays, gesamte Historie)\n")
+        if source == "combined":
+            md.append("_Verhalten/Volumen – NICHT mit den API-Favoriten oben "
+                      "verwechseln. Interessant ist die Differenz._\n")
+        md.append(f"- {mp.get('unique_tracks', '?')} verschiedene Tracks, "
+                  f"{mp.get('unique_artists', '?')} verschiedene Artists je gehört.")
+        md.append("\n**Tracks nach Wiedergaben:**")
+        for t in mp.get("tracks_by_plays", [])[:12]:
+            md.append(f"- {t['name']} – {t['artist']} "
+                      f"({t['plays']}×, {t['minutes']} min)")
+        md.append("\n**Artists nach Hörminuten:** " + ", ".join(
+            f"{a['name']} ({a['minutes']} min / {a['plays']}×)"
+            for a in mp.get("artists_by_minutes", [])[:12]))
+        md.append("")
 
     avd = p.get("avd_profile") or {}
     if avd.get("arousal") is not None:
@@ -384,7 +455,12 @@ def build_llm_markdown(profile: dict) -> str:
                       f"Alter {c['median_music_age']} · +{c['new_artists']} neu")
         md.append(f"\n_{tr.get('hinweis', '')}_\n")
 
-    md.append("### Top-Artists\n")
+    if source == "combined":
+        md.append("### Top-Artists (erklärte Favoriten laut API-Affinität)\n")
+    elif source == "extended_history":
+        md.append("### Top-Artists (meistgespielt – keine kuratierten Favoriten)\n")
+    else:
+        md.append("### Top-Artists\n")
     md.append(f"- **Letzte 4 Wochen:** {fmt_list([a['name'] for a in ta.get('letzte_4_wochen', [])])}")
     md.append(f"- **Letzte 6 Monate:** {fmt_list([a['name'] for a in ta.get('letzte_6_monate', [])])}")
     md.append(f"- **All-Time:** {fmt_list([a['name'] for a in ta.get('all_time', [])])}\n")
@@ -447,7 +523,10 @@ def build_llm_markdown(profile: dict) -> str:
         md.append(f"- {ts['interpretation_hinweis']}\n")
 
     if "listening_by_daytime" in p:
-        md.append("### Hörzeiten (grobe Tendenz, letzte 50 Wiedergaben)\n")
+        if source in ("combined", "extended_history"):
+            md.append("### Hörzeiten (gesamte Streaming-History)\n")
+        else:
+            md.append("### Hörzeiten (grobe Tendenz, letzte 50 Wiedergaben)\n")
         for bucket, cnt in p["listening_by_daytime"].items():
             md.append(f"- {bucket}: {cnt}")
         md.append(f"- _{p.get('listening_by_daytime_hinweis', '')}_\n")
@@ -498,6 +577,82 @@ def run_cli() -> None:
     print("\nFertig. Tipp: 'python spotify.py --web' für das Dashboard.")
 
 
+def build_combined_profile(sp, history_dir: str | None = None, log=print) -> dict:
+    """API-Profil (erklärte Favoriten/Top + Bibliothek mit Erscheinungsjahr/
+    Popularität) als Basis, darüber das Export-Overlay (alles je gehört:
+    Hörvolumen, echte Hörzeiten, Meistgehörtes). Beide Ebenen bleiben getrennt
+    kenntlich - Geschmack/Psychologie aus den Favoriten, Verhalten aus dem
+    Gesamt-Streaming."""
+    import history as hist
+    path = history_dir or CONFIG["history_dir"]
+    if not path:
+        sys.exit("Kein History-Ordner. Übergib ihn per --combined <DIR> oder "
+                 "setze SPOTIFY_HISTORY_DIR.")
+    log(">> [1/2] Hole API-Daten (Favoriten/Top + Bibliothek) ...")
+    profile = build_profile(sp, log=log)
+
+    log(">> [2/2] Lade Extended Streaming History (gesamtes Hörvolumen) ...")
+    events, dated = hist.load_history(path, log=log)
+    summary = hist.summarize_history(events, dated)
+
+    pat = profile["patterns"]
+    # Hörzeiten der Voll-Historie ersetzen das 50-Plays-Fenster der API.
+    pat.update(summary["listening_times"])
+    pat["history_stats"] = summary["history_stats"]
+    pat["most_played"] = summary["most_played"]
+
+    hs = summary["history_stats"]
+    profile["source"] = "combined"
+    profile["user"]["display_name"] = (
+        (profile["user"].get("display_name") or "Mein Profil") + " · + History")
+    profile["note"] = (
+        "Kombinierte Quelle. ZWEI Ebenen, bewusst getrennt: (1) Web-API = "
+        "erklärte Favoriten/Top-Listen (Spotify-Affinität) + gespeicherte "
+        "Bibliothek MIT Erscheinungsjahr/Popularität/Explicit - daraus "
+        "Geschmack, Persönlichkeit, Alters-Schätzung, Mainstream-Neigung. "
+        "(2) Extended Streaming History = ALLES je Gehörte (" +
+        (hs["date_range"][0] or "?") + " bis " + (hs["date_range"][1] or "?") +
+        f", {hs['total_hours']} h, {hs['real_plays']} echte Plays) - daraus "
+        "tatsächliches Hörverhalten, -volumen, Hörzeiten, Skip-Rate und "
+        "Meistgehörtes. Favoriten (was man liebt) ≠ Gesamt-Plays (was tatsächlich "
+        "lief, inkl. Nebenbei/Wiederholung).")
+    return profile
+
+
+def build_history_profile(history_dir: str | None = None, log=print) -> dict:
+    """Profil aus der Extended Streaming History bauen + speichern."""
+    import history as hist
+    path = history_dir or CONFIG["history_dir"]
+    if not path:
+        sys.exit("Kein History-Ordner. Übergib ihn per --history <DIR> oder "
+                 "setze SPOTIFY_HISTORY_DIR.")
+    profile = hist.build_profile_from_history(path, log=log)
+    save_profile(profile)
+    return profile
+
+
+def run_history_cli(history_dir: str | None) -> None:
+    profile = build_history_profile(history_dir)
+    hs = profile["patterns"].get("history_stats", {})
+    print(f">> Aus Streaming-History: {hs.get('real_plays')} Plays, "
+          f"{hs.get('total_hours')} h.")
+    print(f">> Rohdaten gespeichert: {OUT_JSON}")
+    print(f">> LLM-Profil gespeichert: {OUT_PROMPT}")
+    print("\nFertig. Tipp: 'python spotify.py --web' für das Dashboard.")
+
+
+def run_combined_cli(history_dir: str | None) -> None:
+    print(">> Verbinde mit Spotify (für Favoriten/Top + Bibliothek) ...")
+    sp = get_client(open_browser=True)
+    profile = build_combined_profile(sp, history_dir)
+    save_profile(profile)
+    hs = profile["patterns"].get("history_stats", {})
+    print(f">> Combined: API-Favoriten + {hs.get('real_plays')} Plays "
+          f"({hs.get('total_hours')} h Hörhistorie).")
+    print(f">> Gespeichert: {OUT_JSON} + {OUT_PROMPT}")
+    print("\nFertig. Tipp: 'python spotify.py --web' für das Dashboard.")
+
+
 def reprocess(in_path: str, log=print) -> None:
     """Vorhandenes Export-JSON neu auswerten: Genres extern nachladen +
     Kennzahlen/Persönlichkeit neu berechnen - ohne neuen Spotify-Abruf."""
@@ -528,9 +683,22 @@ def main() -> None:
     parser.add_argument("--reprocess", metavar="FILE", nargs="?", const=OUT_JSON,
                         help="Vorhandenes Export-JSON neu auswerten (Genres "
                              "nachladen) statt neu von Spotify zu holen")
+    parser.add_argument("--history", metavar="DIR", nargs="?", const="",
+                        help="Profil aus der Extended Streaming History (Download) "
+                             "bauen statt aus der Web-API. Ordner mit "
+                             "Streaming_History_Audio_*.json (Default: "
+                             "$SPOTIFY_HISTORY_DIR)")
+    parser.add_argument("--combined", metavar="DIR", nargs="?", const="",
+                        help="API-Favoriten/Top + Extended Streaming History "
+                             "kombinieren (beste Datenbasis). Ordner wie bei "
+                             "--history (Default: $SPOTIFY_HISTORY_DIR)")
     args = parser.parse_args()
 
-    if args.reprocess:
+    if args.combined is not None:
+        run_combined_cli(args.combined or None)
+    elif args.history is not None:
+        run_history_cli(args.history or None)
+    elif args.reprocess:
         reprocess(args.reprocess)
     elif args.web:
         import app as webapp

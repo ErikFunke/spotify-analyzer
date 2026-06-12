@@ -24,10 +24,12 @@
         <h1>{{ profile.user.display_name or 'Mein Musikprofil' }}</h1>
         <div class="sub">
           {% if profile.user.country %}{{ profile.user.country }} · {% endif %}
-          Stand {{ profile.generated_at }}
+          Stand {{ profile.generated_at }} ·
+          {% if profile.source == 'combined' %}🔀 API + History{% elif profile.source == 'extended_history' %}📂 Streaming-History{% else %}🔗 Web-API{% endif %}
         </div>
       </div>
       <div class="spacer"></div>
+      <a class="btn ghost" href="/?setup=1">⇄ Quelle</a>
       <a class="btn ghost" href="/api/data" target="_blank">JSON</a>
       <a class="btn ghost" href="/logout">Abmelden</a>
       <button class="btn ghost" id="llmBtn">🧠 LLM-Analyse</button>
